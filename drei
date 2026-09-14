@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wissenskartei</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  :root{
+    --bg: #14171f;
+    --panel: #1c2029;
+    --panel-line: #2a2f3d;
+    --ink-muted: #8b92a6;
+    --ink-light: #e7e5df;
+    --card: #ece2c9;
+    --card-shadow1: #d9cdac;
+    --card-shadow2: #c6b98f;
+    --ink-on-card: #2b2417;
+    --ink-on-card-muted: #6b5f45;
+    --brass: #c09a4e;
+    --good: #6b8f71;
+    --bad: #b15c4a;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    background-image: radial-gradient(circle at 15% 0%, #1a1e29 0%, var(--bg) 55%);
+    color:var(--ink-light);
+    font-family:'IBM Plex Sans', sans-serif;
+    min-height:100vh;
+  }
+  .shell{max-width:640px;margin:0 auto;padding:28px 20px 60px;}
+  header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:22px;flex-wrap:wrap;gap:10px;}
+  h1{
+    font-family:'Fraunces', serif;
+    font-weight:600;
+    font-size:1.7rem;
+    margin:0;
+    letter-spacing:0.2px;
+  }
+  h1 span{color:var(--brass);font-style:italic;font-weight:500;}
+  nav{display:flex;gap:2px;background:var(--panel);border:1px solid var(--panel-line);border-radius:8px;padding:3px;}
+  nav button{
+    background:transparent;border:none;color:var(--ink-muted);
+    font-family:'IBM Plex Sans';font-size:0.85rem;font-weight:500;
+    padding:7px 14px;border-radius:6px;cursor:pointer;transition:background .15s, color .15s;
+  }
+  nav button.active{background:var(--panel-line);color:var(--ink-light);}
+  .stat-line{font-size:0.82rem;color:var(--ink-muted);margin-bottom:22px;}
+  .stat-line b{color:var(--brass);font-weight:600;}
+
+  /* library */
+  .add-box{background:var(--panel);border:1px solid var(--panel-line);border-radius:10px;padding:16px;margin-bottom:22px;}
+  .add-box h2{font-family:'Fraunces';font-weight:500;font-size:1.05rem;margin:0 0 12px;}
+  .add-tabs{display:flex;gap:6px;margin-bottom:12px;}
+  .add-tabs button{
+    flex:1;background:var(--bg);border:1px solid var(--panel-line);color:var(--ink-muted);
+    padding:8px;border-radius:7px;font-size:0.8rem;cursor:pointer;font-family:'IBM Plex Sans';
+  }
+  .add-tabs button.active{border-color:var(--brass);color:var(--ink-light);}
+  input[type=text], textarea{
+    width:100%;background:var(--bg);border:1px solid var(--panel-line);border-radius:7px;
+    color:var(--ink-light);padding:9px 11px;font-family:'IBM Plex Sans';font-size:0.9rem;resize:vertical;
+  }
+  textarea{min-height:90px;}
+  label.field{display:block;font-size:0.75rem;color:var(--ink-muted);margin:10px 0 5px;}
+  .row{display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap;}
+  .btn{
+    background:var(--brass);color:#1c1608;border:none;border-radius:7px;padding:9px 16px;
+    font-family:'IBM Plex Sans';font-weight:600;font-size:0.85rem;cursor:pointer;
+  }
+  .btn:disabled{opacity:0.45;cursor:default;}
+  .btn.ghost{background:transparent;border:1px solid var(--panel-line);color:var(--ink-light);}
+  .btn.mic{background:var(--panel-line);color:var(--ink-light);border-radius:50%;width:38px;height:38px;padding:0;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .btn.mic.recording{background:var(--bad);}
+  .hint{font-size:0.75rem;color:var(--ink-muted);margin-top:6px;}
+
+  .source-card{
+    background:var(--panel);border:1px solid var(--panel-line);border-radius:9px;
+    padding:12px 14px;margin-bottom:9px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start;
+  }
+  .source-card .meta{font-family:'Fraunces';font-size:0.98rem;color:var(--ink-light);}
+  .source-card .snippet{font-size:0.78rem;color:var(--ink-muted);margin-top:3px;line-height:1.4;}
+  .source-card button{background:none;border:none;color:var(--ink-muted);cursor:pointer;font-size:0.75rem;flex-shrink:0;}
+  .source-card button:hover{color:var(--bad);}
+  .empty{color:var(--ink-muted);font-size:0.88rem;padding:20px 4px;text-align:center;}
+
+  /* quiz */
+  .quiz-wrap{display:flex;justify-content:center;padding-top:10px;}
+  .card-stack{position:relative;width:100%;max-width:420px;}
+  .card-stack::before, .card-stack::after{
+    content:"";position:absolute;inset:0;border-radius:4px;
+  }
+  .card-stack::before{background:var(--card-shadow1);transform:rotate(-2.2deg) translateY(3px);}
+  .card-stack::after{background:var(--card-shadow2);transform:rotate(2.4deg) translateY(5px);}
+  .index-card{
+    position:relative;z-index:1;background:var(--card);color:var(--ink-on-card);
+    border-radius:4px;padding:26px 24px 22px;min-height:230px;
+    box-shadow:0 14px 28px rgba(0,0,0,0.35);
+    background-image: repeating-linear-gradient(0deg, transparent, transparent 27px, rgba(107,95,69,0.13) 28px);
+  }
+  .index-card .tab{
+    position:absolute;top:-14px;left:24px;background:var(--card);
+    padding:4px 12px 3px;border-radius:4px 4px 0 0;font-size:0.68rem;
+    letter-spacing:0.06em;color:var(--ink-on-card-muted);font-weight:600;
+  }
+  .index-card .topic{font-size:0.72rem;color:var(--ink-on-card-muted);margin-bottom:10px;font-style:italic;font-family:'Fraunces';}
+  .index-card .question{font-family:'Fraunces';font-weight:500;font-size:1.28rem;line-height:1.4;margin-bottom:18px;}
+  .index-card textarea{background:rgba(255,255,255,0.45);border:1px solid rgba(107,95,69,0.3);color:var(--ink-on-card);min-height:70px;}
+  .index-card .row{margin-top:14px;}
+  .index-card .btn.mic{background:rgba(107,95,69,0.15);color:var(--ink-on-card);}
+  .index-card .btn.mic.recording{background:var(--bad);color:#fff;}
+
+  .feedback{margin-top:18px;padding:14px 16px;border-radius:8px;font-size:0.88rem;line-height:1.5;}
+  .feedback.correct{background:rgba(107,143,113,0.15);border:1px solid var(--good);}
+  .feedback.wrong{background:rgba(177,92,74,0.15);border:1px solid var(--bad);}
+  .feedback.partial{background:rgba(192,154,78,0.15);border:1px solid var(--brass);}
+  .feedback .verdict{font-weight:600;margin-bottom:6px;font-family:'Fraunces';}
+  .feedback .verdict.correct{color:var(--good);}
+  .feedback
