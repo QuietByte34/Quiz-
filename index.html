@@ -1247,6 +1247,13 @@ Stelle EINE konkrete, offene Wissensfrage auf Deutsch genau zu diesem Inhalt.
 
 Die Frage soll offen sein und der Nutzer soll in eigenen Worten antworten.
 
+WICHTIG FÜR JAHRESZAHLEN UND ZEITRÄUME:
+- Prüfe vor allem historische Orientierung und Zusammenhang, nicht das Auswendiglernen exakter Regierungs- oder Lebenszeiträume.
+- Wenn auf der Karte ein genauer Zeitraum steht (z. B. 1279–1213 v. Chr.), frage NICHT danach, beide Grenzjahre exakt zu nennen.
+- Frage stattdessen nach einer ungefähren zeitlichen Einordnung, z. B. „Um wann?“ oder „In welchem Jahrhundert/ungefähren Zeitraum?“.
+- Exakte Einzeljahre darfst du nur dann gezielt abfragen, wenn gerade dieses Jahr das zentrale historische Lernziel der Karte ist (z. B. 1492, 1789, 1215).
+- Bei Herrschern, Philosophen, Künstlern usw. genügt normalerweise eine grobe zeitliche Einordnung.
+
 Antworte NUR mit einem JSON-Objekt:
 
 {"question":"...","topic":"..."}`;
@@ -1336,7 +1343,19 @@ ${state.currentQuestion.question}
 Antwort des Nutzers:
 ${state.answerText.trim()}
 
-Bewerte die Antwort.
+Bewerte die Antwort freundlich und lernorientiert.
+
+WICHTIGE BEWERTUNGSREGELN:
+- Bewerte deutlich milder bei Jahreszahlen und Zeiträumen.
+- Historische Orientierung und der wesentliche Sachinhalt sind wichtiger als exakte Grenzjahre.
+- Bei Regierungszeiten, Lebensdaten und längeren Zeiträumen muss der Nutzer NICHT beide exakten Jahreszahlen nennen.
+- Eine sinnvolle ungefähre Angabe soll als richtig gelten, wenn sie die Person oder das Ereignis zeitlich klar in die richtige Epoche einordnet.
+- Beispiel: Steht auf der Karte „Ramses der Große 1279–1213 v. Chr.“ und der Nutzer antwortet sinngemäß „um 1200 v. Chr. in Ägypten“, ist das als RICHTIG zu bewerten, nicht als „teilweise“.
+- Ebenso können Angaben wie „13. Jahrhundert v. Chr.“, „um 1200 v. Chr.“ oder eine ähnlich gute Näherung genügen.
+- Exakte Jahreszahlen sind nur dann zwingend, wenn die Frage ausdrücklich ein einzelnes zentrales Schlüsseljahr abfragt (z. B. 1492 oder 1789).
+- Kleine Ungenauigkeiten, fehlende Nebendetails oder andere Formulierungen machen eine im Kern richtige Antwort nicht zu „teilweise“.
+- „teilweise“ nur verwenden, wenn ein wesentlicher inhaltlicher Bestandteil wirklich fehlt oder deutlich falsch ist.
+- „falsch“ nur verwenden, wenn der Kern der Antwort falsch ist.
 
 Antworte NUR als JSON:
 
