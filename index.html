@@ -193,6 +193,16 @@
 
   .btn.mic.recording{background:var(--bad);}
 
+  .secondary{background:var(--panel-line);color:var(--ink-light);}
+  .topic-filter{display:flex;flex-wrap:wrap;gap:7px;margin:14px 0 4px;}
+  .topic-chip{background:var(--bg);border:1px solid var(--panel-line);color:var(--ink-muted);padding:7px 10px;border-radius:999px;font-size:.76rem;cursor:pointer;}
+  .topic-chip.active{border-color:var(--brass);color:var(--ink-light);}
+  .progress-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 0 18px;}
+  .progress-box{background:var(--panel);border:1px solid var(--panel-line);border-radius:9px;padding:11px;text-align:center;font-size:.72rem;color:var(--ink-muted);}
+  .progress-box b{display:block;color:var(--ink-light);font-size:1.15rem;margin-bottom:2px;}
+  .feedback-label{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-on-card-muted);margin-top:10px;margin-bottom:2px;}
+  .error-card{background:var(--panel);border:1px solid var(--panel-line);border-radius:9px;padding:12px 14px;margin-bottom:9px;}
+
   .hint{
     font-size:.75rem;
     color:var(--ink-muted);
@@ -373,6 +383,8 @@ const state = {
   draftText:'',
   answerText:'',
   recentlyAskedIds:[],
+  selectedTopics:[],
+  errorOnly:false,
   settingsView:false,
   settings:{
     provider:'anthropic',
@@ -1152,6 +1164,44 @@ function deleteSource(id) {
 }
 
 
+/* LERNFORTSCHRITT UND THEMEN */
+function sourceTopic(s){
+  const first=(s.text||'').split('.')[0].trim();
+  if(first && first.length < 35) return first;
+  const t=(s.title||'').toLowerCase();
+  if(/ägypt|menes|cheops|echnaton|tutanch|ramses/.test(t)) return 'Ägypten';
+  if(/rom|cäsar|nero|augustus|punisch|hannibal|spartak|trajan|dioklet/.test(t)) return 'Römisches Reich';
+  return 'Weitere';
+}
+function topics(){ return [...new Set(state.sources.map(sourceTopic))].sort((a,b)=>a.localeCompare(b,'de')); }
+function latestVerdict(sourceId){
+  for(let i=state.history.length-1;i>=0;i--) if(state.history[i].sourceId===sourceId) return state.history[i].verdict;
+  return null;
+}
+function progressStats(){
+  let learned=0, unsure=0, unseen=0;
+  state.sources.forEach(s=>{ const v=latestVerdict(s.id); if(v==='richtig') learned++; else if(v==='teilweise'||v==='falsch') unsure++; else unseen++; });
+  return {learned,unsure,unseen};
+}
+function weightedPick(pool){
+  const weighted=[];
+  pool.forEach(s=>{ const v=latestVerdict(s.id); const n=v==='falsch'?6:v==='teilweise'?4:v==='richtig'?1:3; for(let i=0;i<n;i++) weighted.push(s); });
+  return weighted[Math.floor(Math.random()*weighted.length)];
+}
+function recordResult(verdict, answer){
+  if(!state.currentQuestion) return;
+  state.history.push({question:state.currentQuestion.question,answer:answer||'',verdict,sourceId:state.currentQuestion.sourceId,date:new Date().toISOString()});
+  saveHistory();
+}
+function dontKnow(){
+  if(!state.currentQuestion) return;
+  const source=state.sources.find(s=>s.id===state.currentQuestion.sourceId);
+  state.feedback={verdict:'falsch',feedback:'Kein Problem – diese Karte wird künftig häufiger wiederholt.',missing:'',correctAnswer:source?source.text:''};
+  recordResult('falsch','Weiß ich nicht');
+  render();
+}
+
+
 /* FRAGE ERZEUGEN */
 
 async function generateQuestion() {
@@ -1168,25 +1218,14 @@ async function generateQuestion() {
 
   try {
 
-    let pool =
-      state.sources.filter(
-        s =>
-          !state.recentlyAskedIds
-            .includes(s.id)
-      );
-
-    if (pool.length === 0) {
-
-      state.recentlyAskedIds = [];
-      pool = state.sources;
-    }
-
-    const source =
-      pool[
-        Math.floor(
-          Math.random() * pool.length
-        )
-      ];
+    let basePool = state.sources.filter(s =>
+      state.selectedTopics.length===0 || state.selectedTopics.includes(sourceTopic(s))
+    );
+    if(state.errorOnly) basePool=basePool.filter(s=>{const v=latestVerdict(s.id);return v==='falsch'||v==='teilweise';});
+    if(basePool.length===0) throw new Error('Für diese Auswahl gibt es keine passenden Karten.');
+    let pool=basePool.filter(s=>!state.recentlyAskedIds.includes(s.id));
+    if(pool.length===0){ state.recentlyAskedIds=[]; pool=basePool; }
+    const source=weightedPick(pool);
 
     const prompt =
 `Du bist ein Geschichts-Quizmaster.
@@ -1293,7 +1332,7 @@ Bewerte die Antwort.
 
 Antworte NUR als JSON:
 
-{"verdict":"richtig","feedback":"...","correctAnswer":"..."}
+{"verdict":"richtig","feedback":"Kurze Erklärung, was richtig war.","missing":"Was noch fehlte; leer lassen, wenn vollständig.","correctAnswer":"Kurze Musterantwort."}
 
 Als verdict sind erlaubt:
 "richtig", "teilweise" oder "falsch".`;
@@ -1309,22 +1348,7 @@ Als verdict sind erlaubt:
 
     state.feedback = result;
 
-    state.history.push({
-
-      question:
-        state.currentQuestion.question,
-
-      answer:
-        state.answerText.trim(),
-
-      verdict:
-        result.verdict,
-
-      date:
-        new Date().toISOString()
-    });
-
-    saveHistory();
+    recordResult(result.verdict, state.answerText.trim());
 
   }
 
@@ -1532,6 +1556,8 @@ function render() {
           Quiz
         </button>
 
+        <button data-nav="errors" class="${state.view === 'errors' ? 'active' : ''}">Fehler</button>
+
         <button
           data-nav="settings"
           class="${state.view === 'settings' ? 'active' : ''}">
@@ -1566,12 +1592,8 @@ function render() {
 
     }
 
-    else if (state.view === 'quiz') {
-
-      html += renderQuiz();
-
-    }
-
+    else if (state.view === 'quiz') { html += renderQuiz(); }
+    else if (state.view === 'errors') { html += renderErrors(); }
     else {
 
       html += renderSettings();
@@ -1613,7 +1635,8 @@ function render() {
 
 function renderLibrary() {
 
-  let html = `
+  const ps=progressStats();
+  let html = `<div class="progress-grid"><div class="progress-box"><b>${ps.learned}</b>gelernt</div><div class="progress-box"><b>${ps.unsure}</b>unsicher</div><div class="progress-box"><b>${ps.unseen}</b>noch offen</div></div>
   <div class="add-box">
 
     <h2>Quelle hinzufügen</h2>
@@ -1830,18 +1853,13 @@ function renderQuiz() {
 
         ${errorBlock}
 
-        Bereit für eine neue Frage?
-
-        <div>
-
-          <button
-            class="btn"
-            id="start-quiz">
-
-            Frage stellen
-
-          </button>
-
+        <div style="margin-bottom:8px">Wähle auf Wunsch ein Thema:</div>
+        <div class="topic-filter">
+          <button class="topic-chip ${state.selectedTopics.length===0?'active':''}" data-topic="__all">Alle</button>
+          ${topics().map(t=>`<button class="topic-chip ${state.selectedTopics.includes(t)?'active':''}" data-topic="${esc(t)}">${esc(t)}</button>`).join('')}
+        </div>
+        <div class="row" style="justify-content:center;margin-top:18px">
+          <button class="btn" id="start-quiz">Frage stellen</button>
         </div>
 
       </div>`;
@@ -1908,6 +1926,7 @@ function renderQuiz() {
           Antwort abschicken
 
         </button>
+        <button class="btn secondary" id="dont-know">Weiß ich nicht</button>
 
       </div>
     `;
@@ -1937,13 +1956,11 @@ function renderQuiz() {
           ${esc(v)}
         </strong>
 
-        <div>
-          ${esc(state.feedback.feedback)}
-        </div>
-
-        <div class="answer">
-          ${esc(state.feedback.correctAnswer)}
-        </div>
+        <div class="feedback-label">Bewertung</div>
+        <div>${esc(state.feedback.feedback || '')}</div>
+        ${state.feedback.missing ? `<div class="feedback-label">Das fehlte noch</div><div>${esc(state.feedback.missing)}</div>` : ''}
+        <div class="feedback-label">Musterantwort</div>
+        <div class="answer">${esc(state.feedback.correctAnswer || '')}</div>
 
       </div>
 
@@ -1976,6 +1993,16 @@ function renderQuiz() {
 }
 
 
+
+/* FEHLERLISTE */
+function renderErrors(){
+  const bad=state.sources.filter(s=>{const v=latestVerdict(s.id);return v==='falsch'||v==='teilweise';});
+  if(!bad.length) return `<div class="center-block">Noch keine unsicheren oder falschen Karten.</div>`;
+  return `<div class="add-box"><h2>Meine Fehler</h2><div class="hint">${bad.length} Karten zum Wiederholen</div><div class="row"><button class="btn" id="start-error-quiz">Fehler-Quiz starten</button></div></div>`+
+    bad.map(s=>`<div class="error-card"><strong>${esc(s.title)}</strong><div class="hint">${esc(sourceTopic(s))} · zuletzt ${esc(latestVerdict(s.id))}</div></div>`).join('');
+}
+
+
 /* BUTTONS UND EINGABEN */
 
 function attachHandlers() {
@@ -1986,9 +2013,8 @@ function attachHandlers() {
       b =>
         b.onclick = () => {
 
-          state.view =
-            b.dataset.nav;
-
+          state.view = b.dataset.nav;
+          if(state.view==='quiz') state.errorOnly=false;
           render();
         }
     );
@@ -2156,10 +2182,18 @@ function attachHandlers() {
       'next-question'
     );
 
-  if (nextBtn) {
-    nextBtn.onclick =
-      nextQuestion;
-  }
+  if (nextBtn) { nextBtn.onclick = nextQuestion; }
+
+  document.querySelectorAll('[data-topic]').forEach(b=>b.onclick=()=>{
+    const t=b.dataset.topic;
+    if(t==='__all') state.selectedTopics=[];
+    else if(state.selectedTopics.includes(t)) state.selectedTopics=state.selectedTopics.filter(x=>x!==t);
+    else state.selectedTopics.push(t);
+    render();
+  });
+  const dk=document.getElementById('dont-know'); if(dk) dk.onclick=dontKnow;
+  const eq=document.getElementById('start-error-quiz'); if(eq) eq.onclick=()=>{state.errorOnly=true;state.view='quiz';state.currentQuestion=null;render();};
+  const start=document.getElementById('start-quiz'); if(start){ const old=start.onclick; start.onclick=()=>{ if(state.view==='quiz' && !state.errorOnly) state.errorOnly=false; generateQuestion(); }; }
 }
 
 
