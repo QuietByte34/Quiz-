@@ -385,6 +385,10 @@ const state = {
   recentlyAskedIds:[],
   selectedTopics:[],
   errorOnly:false,
+  followupOpen:false,
+  followupText:'',
+  followupMessages:[],
+  loadingFollowup:false,
   settingsView:false,
   settings:{
     provider:'anthropic',
@@ -1212,6 +1216,10 @@ async function generateQuestion() {
   state.currentQuestion = null;
   state.feedback = null;
   state.answerText = '';
+  state.followupOpen = false;
+  state.followupText = '';
+  state.followupMessages = [];
+  state.loadingFollowup = false;
   state.quizError = null;
 
   render();
@@ -1361,6 +1369,69 @@ Als verdict sind erlaubt:
   render();
 }
 
+
+
+/* NACHFRAGEN ZUR AKTUELLEN KARTE */
+function openFollowup(){
+  state.followupOpen=true;
+  render();
+  setTimeout(()=>{const el=document.getElementById('followup-input');if(el) el.focus();},0);
+}
+
+async function askFollowup(){
+  if(!state.followupText.trim() || !state.currentQuestion || state.loadingFollowup) return;
+  const userQuestion=state.followupText.trim();
+  const source=state.sources.find(s=>s.id===state.currentQuestion.sourceId);
+  const prior=state.followupMessages.map(m=>(m.role==='user'?'Nutzer':'Tutor')+': '+m.text).join('\n');
+
+  state.followupMessages.push({role:'user',text:userQuestion});
+  state.followupText='';
+  state.loadingFollowup=true;
+  state.quizError=null;
+  render();
+
+  try{
+    const prompt=`Du bist ein freundlicher Geschichts-Tutor. Der Nutzer lernt mit einer Karteikarte und möchte zu genau dieser Frage etwas nachfragen.
+
+Karteikarte:
+Titel: ${source ? source.title : ''}
+Inhalt: ${source ? source.text : ''}
+
+Ursprüngliche Quizfrage:
+${state.currentQuestion.question}
+
+Antwort des Nutzers:
+${state.answerText || 'Weiß ich nicht'}
+
+Bewertung:
+${state.feedback ? state.feedback.verdict : ''}
+Feedback:
+${state.feedback ? state.feedback.feedback : ''}
+Fehlender Punkt:
+${state.feedback ? (state.feedback.missing || '') : ''}
+Musterantwort:
+${state.feedback ? (state.feedback.correctAnswer || '') : ''}
+
+Bisherige Nachfragen:
+${prior || 'Noch keine.'}
+
+Neue Frage des Nutzers:
+${userQuestion}
+
+Beantworte die neue Frage verständlich auf Deutsch. Du darfst notwendiges historisches Hintergrundwissen ergänzen. Wenn du über den Inhalt der Karteikarte hinausgehst, mache das deutlich. Antworte knapp, aber so ausführlich wie nötig.
+
+Antworte NUR als JSON:
+{"answer":"..."}`;
+
+    const result=await callClaude(prompt);
+    if(!result.answer) throw new Error('Antwort enthielt keine Erklärung.');
+    state.followupMessages.push({role:'assistant',text:result.answer});
+  }catch(e){
+    state.quizError=e.message;
+  }
+  state.loadingFollowup=false;
+  render();
+}
 
 function nextQuestion() {
   generateQuestion();
@@ -1965,6 +2036,28 @@ function renderQuiz() {
       </div>
 
       <div class="row">
+        <button class="btn secondary" id="open-followup">
+          💬 Mehr dazu / Nachfragen
+        </button>
+      </div>
+
+      ${state.followupOpen ? `
+        <div style="margin-top:14px">
+          ${state.followupMessages.map(m=>`
+            <div style="margin:8px 0;padding:10px 12px;border-radius:8px;${m.role==='user'?'background:rgba(43,36,23,.08)':'background:rgba(192,154,78,.12)'}">
+              <div class="feedback-label">${m.role==='user'?'Deine Frage':'Erklärung'}</div>
+              <div>${esc(m.text)}</div>
+            </div>`).join('')}
+          ${state.loadingFollowup ? `<div style="margin:10px 0"><span class="loading"></span> Erklärung wird vorbereitet …</div>` : `
+            <textarea id="followup-input" placeholder="Was möchtest du dazu noch wissen?">${esc(state.followupText)}</textarea>
+            <div class="row">
+              <button class="btn secondary" id="send-followup" ${!state.followupText.trim()?'disabled':''}>Nachfragen</button>
+            </div>
+          `}
+        </div>
+      ` : ''}
+
+      <div class="row">
 
         <button
           class="btn"
@@ -2175,6 +2268,22 @@ function attachHandlers() {
     submitBtn.onclick =
       submitAnswer;
   }
+
+
+  const openFollowupBtn=document.getElementById('open-followup');
+  if(openFollowupBtn) openFollowupBtn.onclick=openFollowup;
+
+  const followupInput=document.getElementById('followup-input');
+  if(followupInput){
+    followupInput.oninput=e=>{
+      state.followupText=e.target.value;
+      const send=document.getElementById('send-followup');
+      if(send) send.disabled=!e.target.value.trim();
+    };
+  }
+
+  const sendFollowupBtn=document.getElementById('send-followup');
+  if(sendFollowupBtn) sendFollowupBtn.onclick=askFollowup;
 
 
   const nextBtn =
