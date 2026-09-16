@@ -820,7 +820,7 @@ const PRESET_WELTGESCHICHTE = [
 
 {title:"1805 – Austerlitz",text:"Napoleon. In der Dreikaiserschlacht bei Austerlitz besiegte Napoleon 1805 die verbündeten Armeen Österreichs und Russlands. Die Schlacht gilt als einer seiner größten militärischen Erfolge. Der Sieg stärkte Frankreichs Vorherrschaft in Mitteleuropa und trug zum Ende des Heiligen Römischen Reiches 1806 bei."},
 
-{title:"1806 – Ende des Heiligen Römischen Reiches",text:"Napoleon. Kaiser Franz legt den Titel ab; Ende des Heiligen Römischen Reiches Deutscher Nation."},
+{title:"1806 – Ende des Heiligen Römischen Reiches",text:"Napoleon. 1806 endete das Heilige Römische Reich nach mehr als 800 Jahren. Napoleon hatte zahlreiche deutsche Fürsten im Rheinbund zusammengeschlossen und damit die alte Reichsordnung entscheidend geschwächt. Kaiser Franz II. legte daraufhin die römisch-deutsche Kaiserkrone nieder und erklärte das Reich für beendet. Als Franz I. blieb er weiterhin Kaiser von Österreich. Das Ende des Reiches veränderte die politische Ordnung Deutschlands grundlegend."},
 
 {title:"1806 – Napoleon schlägt Preußen",text:"Napoleon. Napoleon schlägt Preußen."},
 
@@ -1197,10 +1197,52 @@ function recordResult(verdict, answer){
   state.history.push({question:state.currentQuestion.question,answer:answer||'',verdict,sourceId:state.currentQuestion.sourceId,date:new Date().toISOString()});
   saveHistory();
 }
-function dontKnow(){
+async function dontKnow(){
   if(!state.currentQuestion) return;
   const source=state.sources.find(s=>s.id===state.currentQuestion.sourceId);
-  state.feedback={verdict:'falsch',feedback:'Kein Problem – diese Karte wird künftig häufiger wiederholt.',missing:'',correctAnswer:source?source.text:''};
+
+  state.loadingGrading=true;
+  render();
+
+  try{
+    const prompt=`Du bist ein freundlicher Geschichtslehrer.
+Der Lernende weiß die Antwort auf diese Frage nicht.
+
+FRAGE:
+${state.currentQuestion.question}
+
+KARTE:
+${source ? source.title : ''}
+${source ? source.text : ''}
+
+Erstelle eine verständliche Musterantwort.
+WICHTIG:
+- Schreibe 4 bis 6 vollständige, leicht verständliche Sätze.
+- Erkläre nicht nur die nackte Antwort.
+- Erkläre: Was geschah? Wer war beteiligt? Warum ist das historisch wichtig? Nenne eine wichtige Folge, sofern sinnvoll.
+- Ergänze allgemein gesichertes historisches Hintergrundwissen, wenn der Karteikartentext zu knapp ist.
+- Keine unnötigen Detailzahlen und kein Spezialwissen.
+- Ziel ist, dass man den historischen Zusammenhang versteht und sich einen roten Faden merken kann.
+Antworte ausschließlich als JSON:
+{"correctAnswer":"Ausführliche Musterantwort in 4 bis 6 Sätzen."}`;
+
+    const r=await callClaude(prompt);
+    state.feedback={
+      verdict:'falsch',
+      feedback:'Kein Problem – diese Karte wird künftig häufiger wiederholt.',
+      missing:'',
+      correctAnswer:r.correctAnswer || (source ? source.text : '')
+    };
+  }catch(e){
+    state.feedback={
+      verdict:'falsch',
+      feedback:'Kein Problem – diese Karte wird künftig häufiger wiederholt.',
+      missing:'',
+      correctAnswer:source ? source.text : ''
+    };
+  }
+
+  state.loadingGrading=false;
   recordResult('falsch','Weiß ich nicht');
   render();
 }
