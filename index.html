@@ -1170,14 +1170,44 @@ function deleteSource(id) {
 
 /* LERNFORTSCHRITT UND THEMEN */
 function sourceTopic(s){
-  const first=(s.text||'').split('.')[0].trim();
-  if(first && first.length < 35) return first;
-  const t=(s.title||'').toLowerCase();
-  if(/ägypt|menes|cheops|echnaton|tutanch|ramses/.test(t)) return 'Ägypten';
-  if(/rom|cäsar|nero|augustus|punisch|hannibal|spartak|trajan|dioklet/.test(t)) return 'Römisches Reich';
-  return 'Weitere';
+  const t=((s.title||'')+' '+(s.text||'')).toLowerCase();
+
+  // Wenn möglich, zeitlich anhand der Karte einordnen.
+  let year=null;
+  let m=(s.title||'').match(/(\d{3,4})\s*v\.?\s*chr/i);
+  if(m) year=-parseInt(m[1],10);
+  if(year===null){
+    m=(s.title||'').match(/(\d{3,4})\s*(?:n\.?\s*chr\.?)?/i);
+    if(m) year=parseInt(m[1],10);
+  }
+
+  // Karten ohne eindeutige Jahreszahl nach Inhalt zuordnen.
+  if(year===null){
+    if(/ägypt|mesopot|sumer|babylon|ninive|hammur|abraham|mose|exodus|phöniz|mino|myken|troja/.test(t)) return 'Frühe Hochkulturen';
+    if(/griechen|athen|sparta|perser|alexander|rom|röm|cäsar|augustus|nero|punier|hannibal|spartak|buddha/.test(t)) return 'Antike';
+    if(/völkerwander|byzanz|islam|franken|karolinger|karl der große/.test(t)) return 'Frühmittelalter';
+    if(/kreuzz|investitur|staufer|barbarossa|friedrich ii|mongol/.test(t)) return 'Hochmittelalter';
+    if(/hundertjähr|jeanne|renaissance|gutenberg|konstantinopel|avignon/.test(t)) return 'Spätmittelalter & Renaissance';
+    if(/reformation|luther|karl v|bauernkrieg|hugenott|bartholomäus|dreißigjähr|galilei/.test(t)) return 'Reformation & Glaubenskriege';
+    if(/absolut|ludwig xiv|preußen|aufklärung|peter der große|siebenjähr|cromwell/.test(t)) return 'Absolutismus & Aufklärung';
+    if(/revolution|napoleon|austerlitz|waterloo|wiener kongress/.test(t)) return 'Revolution & Napoleon';
+    return 'Antike';
+  }
+
+  if(year < -800) return 'Frühe Hochkulturen';
+  if(year < 476) return 'Antike';
+  if(year < 1000) return 'Frühmittelalter';
+  if(year < 1300) return 'Hochmittelalter';
+  if(year < 1500) return 'Spätmittelalter & Renaissance';
+  if(year < 1648) return 'Reformation & Glaubenskriege';
+  if(year < 1789) return 'Absolutismus & Aufklärung';
+  return 'Revolution & Napoleon';
 }
-function topics(){ return [...new Set(state.sources.map(sourceTopic))].sort((a,b)=>a.localeCompare(b,'de')); }
+function topics(){
+  const order=['Frühe Hochkulturen','Antike','Frühmittelalter','Hochmittelalter','Spätmittelalter & Renaissance','Reformation & Glaubenskriege','Absolutismus & Aufklärung','Revolution & Napoleon'];
+  const used=new Set(state.sources.map(sourceTopic));
+  return order.filter(t=>used.has(t));
+}
 function latestVerdict(sourceId){
   for(let i=state.history.length-1;i>=0;i--) if(state.history[i].sourceId===sourceId) return state.history[i].verdict;
   return null;
