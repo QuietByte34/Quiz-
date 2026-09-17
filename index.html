@@ -2141,6 +2141,9 @@ function renderQuiz() {
         <button class="btn secondary" id="open-followup">
           💬 Mehr dazu / Nachfragen
         </button>
+        <button class="btn secondary" id="read-answer">
+          🔊 Antwort vorlesen
+        </button>
       </div>
 
       ${state.followupOpen ? `
@@ -2188,6 +2191,32 @@ function renderQuiz() {
 }
 
 
+
+
+/* ANTWORT VORLESEN */
+function toggleReadAnswer(){
+  if(!('speechSynthesis' in window)){
+    alert('Die Vorlesefunktion wird von diesem Browser leider nicht unterstützt.');
+    return;
+  }
+  if(window.speechSynthesis.speaking || window.speechSynthesis.pending){
+    window.speechSynthesis.cancel();
+    return;
+  }
+  if(!state.feedback) return;
+  const parts=[];
+  if(state.feedback.feedback) parts.push(state.feedback.feedback);
+  if(state.feedback.missing) parts.push('Das fehlte noch: '+state.feedback.missing);
+  if(state.feedback.correctAnswer) parts.push('Musterantwort: '+state.feedback.correctAnswer);
+  const u=new SpeechSynthesisUtterance(parts.join(' '));
+  u.lang='de-DE';
+  u.rate=0.95;
+  const voices=window.speechSynthesis.getVoices();
+  const de=voices.find(v=>/^de(-|_)/i.test(v.lang));
+  if(de) u.voice=de;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(u);
+}
 
 /* FEHLERLISTE */
 function renderErrors(){
@@ -2374,6 +2403,9 @@ function attachHandlers() {
 
   const openFollowupBtn=document.getElementById('open-followup');
   if(openFollowupBtn) openFollowupBtn.onclick=openFollowup;
+
+  const readAnswerBtn=document.getElementById('read-answer');
+  if(readAnswerBtn) readAnswerBtn.onclick=toggleReadAnswer;
 
   const followupInput=document.getElementById('followup-input');
   if(followupInput){
