@@ -194,6 +194,7 @@
   .btn.mic.recording{background:var(--bad);}
 
   .secondary{background:var(--panel-line);color:var(--ink-light);}
+  .self-rate.active{outline:2px solid var(--brass);background:var(--brass);color:#1c1608;}
   .topic-filter{display:flex;flex-wrap:wrap;gap:7px;margin:14px 0 4px;}
   .topic-chip{background:var(--bg);border:1px solid var(--panel-line);color:var(--ink-muted);padding:7px 10px;border-radius:999px;font-size:.76rem;cursor:pointer;}
   .topic-chip.active{border-color:var(--brass);color:var(--ink-light);}
@@ -383,6 +384,9 @@ const state = {
   draftText:'',
   answerText:'',
   recentlyAskedIds:[],
+  reviewQueue:[],
+  sessionQuestionCount:0,
+  selfRating:null,
   selectedTopics:[],
   errorOnly:false,
   followupOpen:false,
@@ -1212,20 +1216,57 @@ function latestVerdict(sourceId){
   for(let i=state.history.length-1;i>=0;i--) if(state.history[i].sourceId===sourceId) return state.history[i].verdict;
   return null;
 }
+function latestHistory(sourceId){
+  for(let i=state.history.length-1;i>=0;i--) if(state.history[i].sourceId===sourceId) return state.history[i];
+  return null;
+}
+function intervalDaysFor(sourceId){
+  const h=latestHistory(sourceId);
+  if(!h) return 0;
+  if(h.selfRating==='schwer') return 1;
+  if(h.selfRating==='ging') return 3;
+  if(h.selfRating==='sicher') return 7;
+  if(h.verdict==='falsch') return 0;
+  if(h.verdict==='teilweise') return 1;
+  return 3;
+}
+function isDue(s){
+  const h=latestHistory(s.id);
+  if(!h) return true;
+  const days=intervalDaysFor(s.id);
+  return Date.now() >= new Date(h.date).getTime()+days*86400000;
+}
 function progressStats(){
   let learned=0, unsure=0, unseen=0;
   state.sources.forEach(s=>{ const v=latestVerdict(s.id); if(v==='richtig') learned++; else if(v==='teilweise'||v==='falsch') unsure++; else unseen++; });
   return {learned,unsure,unseen};
 }
 function weightedPick(pool){
+  const due=pool.filter(isDue);
+  const candidates=due.length?due:pool;
   const weighted=[];
-  pool.forEach(s=>{ const v=latestVerdict(s.id); const n=v==='falsch'?6:v==='teilweise'?4:v==='richtig'?1:3; for(let i=0;i<n;i++) weighted.push(s); });
+  candidates.forEach(s=>{ const v=latestVerdict(s.id); const n=v==='falsch'?6:v==='teilweise'?4:v==='richtig'?1:3; for(let i=0;i<n;i++) weighted.push(s); });
   return weighted[Math.floor(Math.random()*weighted.length)];
 }
 function recordResult(verdict, answer){
   if(!state.currentQuestion) return;
-  state.history.push({question:state.currentQuestion.question,answer:answer||'',verdict,sourceId:state.currentQuestion.sourceId,date:new Date().toISOString()});
+  state.history.push({question:state.currentQuestion.question,answer:answer||'',verdict,sourceId:state.currentQuestion.sourceId,date:new Date().toISOString(),selfRating:null});
   saveHistory();
+  if(verdict==='falsch'||verdict==='teilweise'){
+    state.reviewQueue.push({sourceId:state.currentQuestion.sourceId,dueAt:state.sessionQuestionCount+4});
+  }
+}
+function setSelfRating(rating){
+  if(!state.currentQuestion) return;
+  for(let i=state.history.length-1;i>=0;i--){
+    if(state.history[i].sourceId===state.currentQuestion.sourceId){
+      state.history[i].selfRating=rating;
+      break;
+    }
+  }
+  state.selfRating=rating;
+  saveHistory();
+  render();
 }
 async function dontKnow(){
   if(!state.currentQuestion) return;
@@ -1287,6 +1328,7 @@ async function generateQuestion() {
   state.loadingQuestion = true;
   state.currentQuestion = null;
   state.feedback = null;
+  state.selfRating = null;
   state.answerText = '';
   state.followupOpen = false;
   state.followupText = '';
@@ -1303,9 +1345,18 @@ async function generateQuestion() {
     );
     if(state.errorOnly) basePool=basePool.filter(s=>{const v=latestVerdict(s.id);return v==='falsch'||v==='teilweise';});
     if(basePool.length===0) throw new Error('Für diese Auswahl gibt es keine passenden Karten.');
-    let pool=basePool.filter(s=>!state.recentlyAskedIds.includes(s.id));
-    if(pool.length===0){ state.recentlyAskedIds=[]; pool=basePool; }
-    const source=weightedPick(pool);
+    state.sessionQuestionCount++;
+    let source=null;
+    const dueReviewIndex=state.reviewQueue.findIndex(r=>r.dueAt<=state.sessionQuestionCount && basePool.some(s=>s.id===r.sourceId));
+    if(dueReviewIndex>=0){
+      const review=state.reviewQueue.splice(dueReviewIndex,1)[0];
+      source=basePool.find(s=>s.id===review.sourceId) || null;
+    }
+    if(!source){
+      let pool=basePool.filter(s=>!state.recentlyAskedIds.includes(s.id));
+      if(pool.length===0){ state.recentlyAskedIds=[]; pool=basePool; }
+      source=weightedPick(pool);
+    }
 
     const prompt =
 `Du bist ein Geschichts-Quizmaster.
@@ -1340,10 +1391,6 @@ Antworte NUR mit einem JSON-Objekt:
     }
 
     result.sourceId = source.id;
-
-    // Oben auf der Karte nur die Epoche anzeigen – nicht den von der KI
-    // erzeugten Topic-Begriff, weil dieser die Antwort verraten kann.
-    result.topic = sourceTopic(source);
 
     state.currentQuestion = result;
 
@@ -2166,6 +2213,16 @@ function renderQuiz() {
         </div>
       ` : ''}
 
+      <div style="margin-top:16px">
+        <div class="feedback-label">Wie sicher konntest du dich erinnern?</div>
+        <div class="row">
+          <button class="btn secondary self-rate ${state.selfRating==='schwer'?'active':''}" data-rating="schwer">😕 Schwer</button>
+          <button class="btn secondary self-rate ${state.selfRating==='ging'?'active':''}" data-rating="ging">🙂 Ging</button>
+          <button class="btn secondary self-rate ${state.selfRating==='sicher'?'active':''}" data-rating="sicher">😎 Sicher</button>
+        </div>
+        <div class="hint">Schwer: morgen · Ging: in 3 Tagen · Sicher: in 7 Tagen. Falsche/unsichere Karten kommen zusätzlich nach einigen Fragen noch einmal.</div>
+      </div>
+
       <div class="row">
 
         <button
@@ -2423,6 +2480,10 @@ function attachHandlers() {
   const sendFollowupBtn=document.getElementById('send-followup');
   if(sendFollowupBtn) sendFollowupBtn.onclick=askFollowup;
 
+
+  document.querySelectorAll('[data-rating]').forEach(b=>{
+    b.onclick=()=>setSelfRating(b.dataset.rating);
+  });
 
   const nextBtn =
     document.getElementById(
